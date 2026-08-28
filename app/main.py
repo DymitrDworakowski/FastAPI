@@ -1,6 +1,7 @@
 from fastapi import FastAPI, status
 from pydantic import BaseModel, EmailStr, Field
 from fastapi import HTTPException
+from app import models, schemas
 
 app = FastAPI()
 
@@ -105,13 +106,6 @@ def get_movie(movie_id: int):
         detail="Фільм не знайдено"
     )
 
-@app.post("/movies", status_code=status.HTTP_201_CREATED)
-def create_movie(movie: Movie):
-    return {
-        "message": f"Фільм {movie.title} створено",
-        "director": movie.director
-    }
-
 @app.get("/movies")
 def get_movies(limit: int = 10, available: bool = True):
     return {
@@ -134,18 +128,51 @@ def delete_movie(movie_id: int):
         detail="Фільм не знайдено"
     )
 
-class User(BaseModel):
-    username: str = Field(min_length=3, max_length=20)
-    email: EmailStr
-    age: int = Field(ge=18, le=120)
-    full_name: str | None = None
-    is_active: bool = True
+@app.post("/movies", status_code=status.HTTP_201_CREATED)
+def create_movie(
+    movie: schemas.MoviesCreate,
+    db: Session = Depends(get_db)
+):
+    db_movie = models.Movie(
+        title=movie.title,
+        overview=movie.overview,
+        year=movie.year,
+        rating=movie.rating,
+        category=movie.category
+    )
+    db.add(db_movie)
+    db.commit()
+    db.refresh(db_movie)
 
-@app.post("/users", status_code=status.HTTP_201_CREATED)
-def create_user(user: User):
     return {
-        "message": f"Користувача {user.username} створено",
-        "email": user.email,
-        "age": user.age
+        "message": f"Фільм {db_movie.title} створено",
+        "id": db_movie.id
     }
 
+@app.put("/movies/{movie_id}", status_code=status.HTTP_200_OK)
+def update_movie(
+    movie_id: int,
+    movie: schemas.MoviesUpdate,
+    db: Session = Depends(get_db)
+):
+    db_movie = db.query(models.Movie).filter(models.Movie.id == movie_id).first()
+
+    if not db_movie:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Фільм не знайдено"
+        )
+
+    db_movie.title = movie.title
+    db_movie.overview = movie.overview
+    db_movie.year = movie.year
+    db_movie.rating = movie.rating
+    db_movie.category = movie.category
+
+    db.commit()
+    db.refresh(db_movie)
+
+    return {
+        "message": f"Фільм {db_movie.title} оновлено",
+        "id": db_movie.id
+    }
